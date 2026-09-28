@@ -1,0 +1,13 @@
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+jupyter
+opencv-python
+ultralytics
+flask
+flask-cors
+pyserial
+joblib
+mysql-connector-python
