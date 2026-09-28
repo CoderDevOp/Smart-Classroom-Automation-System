@@ -2,6 +2,7 @@ import cv2
 from pathlib import Path
 import sys
 import time
+import ctypes
 
 
 # =================================
@@ -29,6 +30,19 @@ from vision.zones import ZoneManager
 from automation.controller import AutomationController
 from hardware.arduino import ArduinoController
 from database.database import ClassroomDatabase
+
+
+# =================================
+# GLOBAL Q KEY CHECK
+# =================================
+
+def q_pressed():
+
+    # Windows virtual key code for Q = 0x51
+    return (
+        ctypes.windll.user32.GetAsyncKeyState(0x51)
+        & 0x8000
+    ) != 0
 
 
 # =================================
@@ -63,7 +77,6 @@ zone_manager = ZoneManager(
     str(ZONE_CONFIG)
 )
 
-
 print(
     f"Loaded {len(zone_manager.zones)} zones."
 )
@@ -95,7 +108,6 @@ database = ClassroomDatabase(
     str(DATABASE_PATH)
 )
 
-
 print(
     "Database connected."
 )
@@ -113,7 +125,6 @@ arduino = ArduinoController(
 
     timeout=1
 )
-
 
 arduino_connected = arduino.connect()
 
@@ -142,6 +153,24 @@ previous_people_count = {
 # =================================
 
 appliance_start_time = {
+
+    zone["name"]: {
+
+        "light": None,
+
+        "fan": None
+
+    }
+
+    for zone in zone_manager.zones
+}
+
+
+# =================================
+# SESSION OCCUPANCY
+# =================================
+
+appliance_start_people = {
 
     zone["name"]: {
 
@@ -187,7 +216,7 @@ print(
 )
 
 print(
-    "Press Q to stop."
+    "Press Q anywhere to stop."
 )
 
 
@@ -195,469 +224,594 @@ print(
 # MAIN LOOP
 # =================================
 
-while True:
+try:
 
-    success, frame = camera.read()
+    while True:
 
+        # ---------------------------------
+        # GLOBAL Q CHECK
+        # ---------------------------------
 
-    if not success:
-
-        print(
-            "ERROR: Could not read camera frame."
-        )
-
-        break
-
-
-    current_time = time.time()
-
-
-    # =================================
-    # PERSON DETECTION
-    # =================================
-
-    persons = detector.detect(
-        frame
-    )
-
-
-    # =================================
-    # DRAW ZONES
-    # =================================
-
-    frame = zone_manager.draw_zones(
-        frame
-    )
-
-
-    # =================================
-    # ZONE COUNTS
-    # =================================
-
-    zone_counts = {
-
-        zone["name"]: 0
-
-        for zone in zone_manager.zones
-    }
-
-
-    outside_count = 0
-
-
-    # =================================
-    # PROCESS PERSONS
-    # =================================
-
-    for person in persons:
-
-        x1, y1, x2, y2 = (
-            person["box"]
-        )
-
-        confidence = (
-            person["confidence"]
-        )
-
-
-        # TOP CENTER
-
-        center_x = int(
-            (x1 + x2) / 2
-        )
-
-        top_y = y1
-
-
-        # FIND ZONE
-
-        zone = zone_manager.get_zone(
-
-            center_x,
-
-            top_y
-        )
-
-
-        # COUNT
-
-        if zone in zone_counts:
-
-            zone_counts[zone] += 1
-
-        else:
-
-            outside_count += 1
-
-
-        # BOUNDING BOX
-
-        cv2.rectangle(
-
-            frame,
-
-            (x1, y1),
-
-            (x2, y2),
-
-            (0, 255, 0),
-
-            2
-        )
-
-
-        # TOP CENTER POINT
-
-        cv2.circle(
-
-            frame,
-
-            (center_x, top_y),
-
-            6,
-
-            (0, 0, 255),
-
-            -1
-        )
-
-
-        # LABEL
-
-        cv2.putText(
-
-            frame,
-
-            f"{zone} {confidence:.2f}",
-
-            (
-                x1,
-                max(y1 - 8, 18)
-            ),
-
-            cv2.FONT_HERSHEY_COMPLEX,
-
-            0.45,
-
-            (0, 0, 255),
-
-            1,
-
-            cv2.LINE_AA
-        )
-
-
-    # =================================
-    # LOG OCCUPANCY CHANGES
-    # =================================
-
-    for zone_name, people_count in zone_counts.items():
-
-        previous_count = previous_people_count[
-            zone_name
-        ]
-
-
-        if people_count != previous_count:
-
-            database.log_occupancy(
-
-                zone_name=zone_name,
-
-                people_count=people_count
-            )
-
+        if q_pressed():
 
             print(
-                f"DB: {zone_name} "
-                f"occupancy = "
-                f"{people_count}"
+                "Q pressed. Stopping system..."
+            )
+
+            break
+
+
+        # ---------------------------------
+        # CAMERA FRAME
+        # ---------------------------------
+
+        success, frame = camera.read()
+
+
+        if not success:
+
+            print(
+                "ERROR: Could not read camera frame."
+            )
+
+            break
+
+
+        current_time = time.time()
+
+
+        # =================================
+        # PERSON DETECTION
+        # =================================
+
+        persons = detector.detect(
+            frame
+        )
+
+
+        # =================================
+        # DRAW ZONES
+        # =================================
+
+        frame = zone_manager.draw_zones(
+            frame
+        )
+
+
+        # =================================
+        # ZONE COUNTS
+        # =================================
+
+        zone_counts = {
+
+            zone["name"]: 0
+
+            for zone in zone_manager.zones
+        }
+
+
+        outside_count = 0
+
+
+        # =================================
+        # PROCESS PERSONS
+        # =================================
+
+        for person in persons:
+
+            x1, y1, x2, y2 = (
+                person["box"]
+            )
+
+            confidence = (
+                person["confidence"]
             )
 
 
-            previous_people_count[
+            # ---------------------------------
+            # TOP CENTER
+            # ---------------------------------
+
+            center_x = int(
+                (x1 + x2) / 2
+            )
+
+            top_y = y1
+
+
+            # ---------------------------------
+            # FIND ZONE
+            # ---------------------------------
+
+            zone = zone_manager.get_zone(
+
+                center_x,
+
+                top_y
+            )
+
+
+            # ---------------------------------
+            # COUNT
+            # ---------------------------------
+
+            if zone in zone_counts:
+
+                zone_counts[zone] += 1
+
+            else:
+
+                outside_count += 1
+
+
+            # ---------------------------------
+            # BOUNDING BOX
+            # ---------------------------------
+
+            cv2.rectangle(
+
+                frame,
+
+                (x1, y1),
+
+                (x2, y2),
+
+                (0, 255, 0),
+
+                2
+            )
+
+
+            # ---------------------------------
+            # TOP CENTER POINT
+            # ---------------------------------
+
+            cv2.circle(
+
+                frame,
+
+                (center_x, top_y),
+
+                6,
+
+                (0, 0, 255),
+
+                -1
+            )
+
+
+            # ---------------------------------
+            # LABEL
+            # ---------------------------------
+
+            cv2.putText(
+
+                frame,
+
+                f"{zone} {confidence:.2f}",
+
+                (
+                    x1,
+                    max(y1 - 8, 18)
+                ),
+
+                cv2.FONT_HERSHEY_COMPLEX,
+
+                0.45,
+
+                (0, 0, 255),
+
+                1,
+
+                cv2.LINE_AA
+            )
+
+
+        # =================================
+        # LOG OCCUPANCY CHANGES
+        # =================================
+
+        for zone_name, people_count in zone_counts.items():
+
+            previous_count = previous_people_count[
                 zone_name
-            ] = people_count
+            ]
 
 
-    # =================================
-    # AUTOMATION
-    # =================================
+            if people_count != previous_count:
 
-    decisions = automation.update(
-        zone_counts
-    )
+                database.log_occupancy(
 
+                    zone_name=zone_name,
 
-    # =================================
-    # PROCESS EACH ZONE
-    # =================================
-
-    for index, zone in enumerate(
-
-        zone_manager.zones,
-
-        start=1
-    ):
-
-        zone_name = zone["name"]
-
-        data = decisions[
-            zone_name
-        ]
+                    people_count=people_count
+                )
 
 
-        # =================================
-        # LIGHT STATE CHANGE
-        # =================================
+                print(
 
-        if data["light_changed"]:
+                    f"DB: {zone_name} "
 
-            new_light_state = data["light"]
+                    f"occupancy = "
+
+                    f"{people_count}"
+                )
 
 
-            # LIGHT TURNED ON
-            if new_light_state:
-
-                appliance_start_time[
+                previous_people_count[
                     zone_name
-                ]["light"] = current_time
-
-
-            # LIGHT TURNED OFF
-            else:
-
-                start_time = (
-                    appliance_start_time[
-                        zone_name
-                    ]["light"]
-                )
-
-
-                if start_time is not None:
-
-                    duration_seconds = (
-                        current_time
-                        - start_time
-                    )
-
-
-                    energy_wh = (
-                        LIGHT_POWER_WATTS
-                        * duration_seconds
-                        / 3600
-                    )
-
-
-                    database.log_energy(
-
-                        zone_name=zone_name,
-
-                        people_count=data["people"],
-
-                        light_status=True,
-
-                        fan_status=data["fan"],
-
-                        duration_seconds=duration_seconds,
-
-                        energy_wh=energy_wh
-                    )
-
-
-                    print(
-                        f"ENERGY: "
-                        f"{zone_name} Light | "
-                        f"{duration_seconds:.2f}s | "
-                        f"{energy_wh:.4f} Wh"
-                    )
-
-
-                    appliance_start_time[
-                        zone_name
-                    ]["light"] = None
-
-
-            # DATABASE EVENT
-
-            database.log_appliance_event(
-
-                zone_name=zone_name,
-
-                appliance="light",
-
-                previous_state=not new_light_state,
-
-                current_state=new_light_state
-            )
-
-
-            print(
-                f"DB: {zone_name} "
-                f"Light -> "
-                f"{'ON' if new_light_state else 'OFF'}"
-            )
+                ] = people_count
 
 
         # =================================
-        # FAN STATE CHANGE
+        # AUTOMATION
         # =================================
 
-        if data["fan_changed"]:
-
-            new_fan_state = data["fan"]
-
-
-            # FAN ON
-            if new_fan_state:
-
-                appliance_start_time[
-                    zone_name
-                ]["fan"] = current_time
-
-
-            # FAN OFF
-            else:
-
-                start_time = (
-                    appliance_start_time[
-                        zone_name
-                    ]["fan"]
-                )
-
-
-                if start_time is not None:
-
-                    duration_seconds = (
-                        current_time
-                        - start_time
-                    )
-
-
-                    energy_wh = (
-                        FAN_POWER_WATTS
-                        * duration_seconds
-                        / 3600
-                    )
-
-
-                    database.log_energy(
-
-                        zone_name=zone_name,
-
-                        people_count=data["people"],
-
-                        light_status=data["light"],
-
-                        fan_status=True,
-
-                        duration_seconds=duration_seconds,
-
-                        energy_wh=energy_wh
-                    )
-
-
-                    print(
-                        f"ENERGY: "
-                        f"{zone_name} Fan | "
-                        f"{duration_seconds:.2f}s | "
-                        f"{energy_wh:.4f} Wh"
-                    )
-
-
-                    appliance_start_time[
-                        zone_name
-                    ]["fan"] = None
-
-
-            # DATABASE EVENT
-
-            database.log_appliance_event(
-
-                zone_name=zone_name,
-
-                appliance="fan",
-
-                previous_state=not new_fan_state,
-
-                current_state=new_fan_state
-            )
-
-
-            print(
-                f"DB: {zone_name} "
-                f"Fan -> "
-                f"{'ON' if new_fan_state else 'OFF'}"
-            )
-
-
-        # =================================
-        # ARDUINO
-        # =================================
-
-        if data["state_changed"]:
-
-            if arduino_connected:
-
-                arduino.send_zone_command(
-
-                    zone_number=index,
-
-                    light=data["light"],
-
-                    fan=data["fan"]
-                )
-
-
-    # =================================
-    # DISPLAY
-    # =================================
-
-    y_position = 30
-
-
-    for zone_name, data in decisions.items():
-
-        people = data["people"]
-
-
-        light = (
-
-            "ON"
-
-            if data["light"]
-
-            else "OFF"
+        decisions = automation.update(
+            zone_counts
         )
 
 
-        fan = (
+        # =================================
+        # PROCESS EACH ZONE
+        # =================================
 
-            "ON"
+        for index, zone in enumerate(
 
-            if data["fan"]
+            zone_manager.zones,
 
-            else "OFF"
-        )
+            start=1
+        ):
+
+            zone_name = zone["name"]
+
+            data = decisions[
+                zone_name
+            ]
 
 
-        text = (
+            # =================================
+            # LIGHT STATE CHANGE
+            # =================================
 
-            f"{zone_name}: "
+            if data["light_changed"]:
 
-            f"{people} | "
+                new_light_state = data["light"]
 
-            f"L:{light} "
 
-            f"F:{fan}"
-        )
+                # ---------------------------------
+                # LIGHT ON
+                # ---------------------------------
 
+                if new_light_state:
+
+                    appliance_start_time[
+                        zone_name
+                    ]["light"] = current_time
+
+
+                    appliance_start_people[
+                        zone_name
+                    ]["light"] = data["people"]
+
+
+                # ---------------------------------
+                # LIGHT OFF
+                # ---------------------------------
+
+                else:
+
+                    start_time = (
+
+                        appliance_start_time[
+                            zone_name
+                        ]["light"]
+                    )
+
+
+                    start_people = (
+
+                        appliance_start_people[
+                            zone_name
+                        ]["light"]
+                    )
+
+
+                    if start_time is not None:
+
+                        duration_seconds = (
+
+                            current_time
+
+                            - start_time
+                        )
+
+
+                        if start_people is None:
+
+                            start_people = 0
+
+
+                        database.log_energy(
+
+                            zone_name=zone_name,
+
+                            appliance="light",
+
+                            people_count=start_people,
+
+                            duration_seconds=duration_seconds,
+
+                            power_watts=LIGHT_POWER_WATTS
+                        )
+
+
+                        print(
+
+                            f"ENERGY: "
+
+                            f"{zone_name} Light | "
+
+                            f"People: {start_people} | "
+
+                            f"{duration_seconds:.2f}s"
+                        )
+
+
+                        appliance_start_time[
+                            zone_name
+                        ]["light"] = None
+
+
+                        appliance_start_people[
+                            zone_name
+                        ]["light"] = None
+
+
+                # ---------------------------------
+                # DATABASE EVENT
+                # ---------------------------------
+
+                database.log_appliance_event(
+
+                    zone_name=zone_name,
+
+                    appliance="light",
+
+                    previous_state=not new_light_state,
+
+                    current_state=new_light_state
+                )
+
+
+                print(
+
+                    f"DB: {zone_name} "
+
+                    f"Light -> "
+
+                    f"{'ON' if new_light_state else 'OFF'}"
+                )
+
+
+            # =================================
+            # FAN STATE CHANGE
+            # =================================
+
+            if data["fan_changed"]:
+
+                new_fan_state = data["fan"]
+
+
+                # ---------------------------------
+                # FAN ON
+                # ---------------------------------
+
+                if new_fan_state:
+
+                    appliance_start_time[
+                        zone_name
+                    ]["fan"] = current_time
+
+
+                    appliance_start_people[
+                        zone_name
+                    ]["fan"] = data["people"]
+
+
+                # ---------------------------------
+                # FAN OFF
+                # ---------------------------------
+
+                else:
+
+                    start_time = (
+
+                        appliance_start_time[
+                            zone_name
+                        ]["fan"]
+                    )
+
+
+                    start_people = (
+
+                        appliance_start_people[
+                            zone_name
+                        ]["fan"]
+                    )
+
+
+                    if start_time is not None:
+
+                        duration_seconds = (
+
+                            current_time
+
+                            - start_time
+                        )
+
+
+                        if start_people is None:
+
+                            start_people = 0
+
+
+                        database.log_energy(
+
+                            zone_name=zone_name,
+
+                            appliance="fan",
+
+                            people_count=start_people,
+
+                            duration_seconds=duration_seconds,
+
+                            power_watts=FAN_POWER_WATTS
+                        )
+
+
+                        print(
+
+                            f"ENERGY: "
+
+                            f"{zone_name} Fan | "
+
+                            f"People: {start_people} | "
+
+                            f"{duration_seconds:.2f}s"
+                        )
+
+
+                        appliance_start_time[
+                            zone_name
+                        ]["fan"] = None
+
+
+                        appliance_start_people[
+                            zone_name
+                        ]["fan"] = None
+
+
+                # ---------------------------------
+                # DATABASE EVENT
+                # ---------------------------------
+
+                database.log_appliance_event(
+
+                    zone_name=zone_name,
+
+                    appliance="fan",
+
+                    previous_state=not new_fan_state,
+
+                    current_state=new_fan_state
+                )
+
+
+                print(
+
+                    f"DB: {zone_name} "
+
+                    f"Fan -> "
+
+                    f"{'ON' if new_fan_state else 'OFF'}"
+                )
+
+
+            # =================================
+            # ARDUINO
+            # =================================
+
+            if data["state_changed"]:
+
+                if arduino_connected:
+
+                    arduino.send_zone_command(
+
+                        zone_number=index,
+
+                        light=data["light"],
+
+                        fan=data["fan"]
+                    )
+
+
+        # =================================
+        # DISPLAY
+        # =================================
+
+        y_position = 30
+
+
+        for zone_name, data in decisions.items():
+
+            people = data["people"]
+
+
+            light = (
+
+                "ON"
+
+                if data["light"]
+
+                else "OFF"
+            )
+
+
+            fan = (
+
+                "ON"
+
+                if data["fan"]
+
+                else "OFF"
+            )
+
+
+            text = (
+
+                f"{zone_name}: "
+
+                f"{people} | "
+
+                f"L:{light} "
+
+                f"F:{fan}"
+            )
+
+
+            cv2.putText(
+
+                frame,
+
+                text,
+
+                (15, y_position),
+
+                cv2.FONT_HERSHEY_COMPLEX,
+
+                0.5,
+
+                (0, 0, 255),
+
+                1,
+
+                cv2.LINE_AA
+            )
+
+
+            y_position += 25
+
+
+        # =================================
+        # OUTSIDE
+        # =================================
 
         cv2.putText(
 
             frame,
 
-            text,
+            f"Outside: {outside_count}",
 
             (15, y_position),
 
@@ -676,153 +830,146 @@ while True:
         y_position += 25
 
 
-    # =================================
-    # OUTSIDE
-    # =================================
+        # =================================
+        # TOTAL
+        # =================================
 
-    cv2.putText(
+        cv2.putText(
 
-        frame,
+            frame,
 
-        f"Outside: {outside_count}",
+            f"Total: {len(persons)}",
 
-        (15, y_position),
+            (15, y_position),
 
-        cv2.FONT_HERSHEY_COMPLEX,
+            cv2.FONT_HERSHEY_COMPLEX,
 
-        0.5,
+            0.5,
 
-        (0, 0, 255),
+            (0, 0, 255),
 
-        1,
+            1,
 
-        cv2.LINE_AA
-    )
-
-
-    y_position += 25
+            cv2.LINE_AA
+        )
 
 
-    # =================================
-    # TOTAL
-    # =================================
-
-    cv2.putText(
-
-        frame,
-
-        f"Total: {len(persons)}",
-
-        (15, y_position),
-
-        cv2.FONT_HERSHEY_COMPLEX,
-
-        0.5,
-
-        (0, 0, 255),
-
-        1,
-
-        cv2.LINE_AA
-    )
+        y_position += 25
 
 
-    y_position += 25
+        # =================================
+        # ARDUINO STATUS
+        # =================================
+
+        status = (
+
+            "Arduino: CONNECTED"
+
+            if arduino_connected
+
+            else "Arduino: DISCONNECTED"
+        )
 
 
-    # =================================
-    # ARDUINO STATUS
-    # =================================
+        cv2.putText(
 
-    status = (
+            frame,
 
-        "Arduino: CONNECTED"
+            status,
 
-        if arduino_connected
+            (15, y_position),
 
-        else "Arduino: DISCONNECTED"
-    )
+            cv2.FONT_HERSHEY_COMPLEX,
 
+            0.5,
 
-    cv2.putText(
+            (0, 0, 255),
 
-        frame,
+            1,
 
-        status,
-
-        (15, y_position),
-
-        cv2.FONT_HERSHEY_COMPLEX,
-
-        0.5,
-
-        (0, 0, 255),
-
-        1,
-
-        cv2.LINE_AA
-    )
+            cv2.LINE_AA
+        )
 
 
-    y_position += 25
+        y_position += 25
 
 
-    # =================================
-    # STOP
-    # =================================
+        # =================================
+        # STOP MESSAGE
+        # =================================
 
-    cv2.putText(
+        cv2.putText(
 
-        frame,
+            frame,
 
-        "Q: Stop",
+            "Q: Stop",
 
-        (15, y_position),
+            (15, y_position),
 
-        cv2.FONT_HERSHEY_COMPLEX,
+            cv2.FONT_HERSHEY_COMPLEX,
 
-        0.5,
+            0.5,
 
-        (0, 0, 255),
+            (0, 0, 255),
 
-        1,
+            1,
 
-        cv2.LINE_AA
-    )
-
-
-    # =================================
-    # SHOW
-    # =================================
-
-    cv2.imshow(
-
-        "Smart Classroom Automation",
-
-        frame
-    )
+            cv2.LINE_AA
+        )
 
 
-    # =================================
-    # QUIT
-    # =================================
+        # =================================
+        # SHOW
+        # =================================
 
-    if cv2.waitKey(1) & 0xFF == ord("q"):
+        cv2.imshow(
 
-        break
+            "Smart Classroom Automation",
+
+            frame
+        )
+
+
+        # ---------------------------------
+        # OpenCV keyboard check
+        # ---------------------------------
+
+        key = cv2.waitKey(1) & 0xFF
+
+
+        if key == ord("q") or key == ord("Q"):
+
+            print(
+                "Q pressed. Stopping system..."
+            )
+
+            break
 
 
 # =================================
 # CLEANUP
 # =================================
 
-camera.release()
+except KeyboardInterrupt:
 
-cv2.destroyAllWindows()
+    print()
+    print(
+        "Ctrl+C pressed. Stopping system..."
+    )
 
-arduino.disconnect()
 
+finally:
 
-print(
-    "Automation stopped."
-)
+    print(
+        "Cleaning up..."
+    )
+
+    camera.release()
+
+    cv2.destroyAllWindows()
+
+    arduino.disconnect()
+
+    print(
+        "Automation stopped."
+    )
