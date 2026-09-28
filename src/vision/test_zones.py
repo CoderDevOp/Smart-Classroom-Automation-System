@@ -1,20 +1,23 @@
 import cv2
 from pathlib import Path
 import sys
+import time
 
 
-# --------------------------------
+# =================================
 # PROJECT PATH
-# --------------------------------
+# =================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 ZONE_CONFIG = PROJECT_ROOT / "config" / "zones.json"
 
+DATABASE_PATH = PROJECT_ROOT / "data" / "classroom.db"
 
-# --------------------------------
-# IMPORT PROJECT MODULES
-# --------------------------------
+
+# =================================
+# IMPORT MODULES
+# =================================
 
 sys.path.append(
     str(PROJECT_ROOT / "src")
@@ -25,11 +28,12 @@ from vision.detector import PersonDetector
 from vision.zones import ZoneManager
 from automation.controller import AutomationController
 from hardware.arduino import ArduinoController
+from database.database import ClassroomDatabase
 
 
-# --------------------------------
+# =================================
 # START
-# --------------------------------
+# =================================
 
 print(
     "Starting Smart Classroom Automation..."
@@ -39,17 +43,21 @@ print(
     f"Zone config: {ZONE_CONFIG}"
 )
 
+print(
+    f"Database: {DATABASE_PATH}"
+)
 
-# --------------------------------
+
+# =================================
 # YOLO
-# --------------------------------
+# =================================
 
 detector = PersonDetector()
 
 
-# --------------------------------
-# ZONE MANAGER
-# --------------------------------
+# =================================
+# ZONES
+# =================================
 
 zone_manager = ZoneManager(
     str(ZONE_CONFIG)
@@ -61,9 +69,9 @@ print(
 )
 
 
-# --------------------------------
-# AUTOMATION CONTROLLER
-# --------------------------------
+# =================================
+# AUTOMATION
+# =================================
 
 automation = AutomationController(
 
@@ -79,9 +87,23 @@ automation = AutomationController(
 )
 
 
-# --------------------------------
+# =================================
+# DATABASE
+# =================================
+
+database = ClassroomDatabase(
+    str(DATABASE_PATH)
+)
+
+
+print(
+    "Database connected."
+)
+
+
+# =================================
 # ARDUINO
-# --------------------------------
+# =================================
 
 arduino = ArduinoController(
 
@@ -102,14 +124,49 @@ if not arduino_connected:
         "WARNING: Arduino unavailable."
     )
 
-    print(
-        "Running without hardware control."
-    )
+
+# =================================
+# OCCUPANCY TRACKING
+# =================================
+
+previous_people_count = {
+
+    zone["name"]: 0
+
+    for zone in zone_manager.zones
+}
 
 
-# --------------------------------
+# =================================
+# APPLIANCE TIMERS
+# =================================
+
+appliance_start_time = {
+
+    zone["name"]: {
+
+        "light": None,
+
+        "fan": None
+
+    }
+
+    for zone in zone_manager.zones
+}
+
+
+# =================================
+# POWER RATINGS
+# =================================
+
+LIGHT_POWER_WATTS = 40
+
+FAN_POWER_WATTS = 75
+
+
+# =================================
 # CAMERA
-# --------------------------------
+# =================================
 
 camera = cv2.VideoCapture(0)
 
@@ -134,9 +191,9 @@ print(
 )
 
 
-# --------------------------------
+# =================================
 # MAIN LOOP
-# --------------------------------
+# =================================
 
 while True:
 
@@ -150,6 +207,9 @@ while True:
         )
 
         break
+
+
+    current_time = time.time()
 
 
     # =================================
@@ -171,7 +231,7 @@ while True:
 
 
     # =================================
-    # INITIALIZE COUNTS
+    # ZONE COUNTS
     # =================================
 
     zone_counts = {
@@ -200,9 +260,7 @@ while True:
         )
 
 
-        # --------------------------------
-        # TOP CENTER POINT
-        # --------------------------------
+        # TOP CENTER
 
         center_x = int(
             (x1 + x2) / 2
@@ -211,9 +269,7 @@ while True:
         top_y = y1
 
 
-        # --------------------------------
         # FIND ZONE
-        # --------------------------------
 
         zone = zone_manager.get_zone(
 
@@ -223,9 +279,7 @@ while True:
         )
 
 
-        # --------------------------------
         # COUNT
-        # --------------------------------
 
         if zone in zone_counts:
 
@@ -236,9 +290,7 @@ while True:
             outside_count += 1
 
 
-        # --------------------------------
         # BOUNDING BOX
-        # --------------------------------
 
         cv2.rectangle(
 
@@ -254,9 +306,7 @@ while True:
         )
 
 
-        # --------------------------------
-        # TOP CENTER RED POINT
-        # --------------------------------
+        # TOP CENTER POINT
 
         cv2.circle(
 
@@ -272,9 +322,7 @@ while True:
         )
 
 
-        # --------------------------------
-        # PERSON LABEL
-        # --------------------------------
+        # LABEL
 
         cv2.putText(
 
@@ -300,39 +348,256 @@ while True:
 
 
     # =================================
-    # AUTOMATION DECISION
+    # LOG OCCUPANCY CHANGES
+    # =================================
+
+    for zone_name, people_count in zone_counts.items():
+
+        previous_count = previous_people_count[
+            zone_name
+        ]
+
+
+        if people_count != previous_count:
+
+            database.log_occupancy(
+
+                zone_name=zone_name,
+
+                people_count=people_count
+            )
+
+
+            print(
+                f"DB: {zone_name} "
+                f"occupancy = "
+                f"{people_count}"
+            )
+
+
+            previous_people_count[
+                zone_name
+            ] = people_count
+
+
+    # =================================
+    # AUTOMATION
     # =================================
 
     decisions = automation.update(
-
         zone_counts
     )
 
 
     # =================================
-    # SEND ONLY CHANGED STATES
+    # PROCESS EACH ZONE
     # =================================
 
-    if arduino_connected:
+    for index, zone in enumerate(
 
-        for index, zone in enumerate(
+        zone_manager.zones,
 
-            zone_manager.zones,
+        start=1
+    ):
 
-            start=1
-        ):
+        zone_name = zone["name"]
 
-            zone_name = zone["name"]
-
-            data = decisions[
-                zone_name
-            ]
+        data = decisions[
+            zone_name
+        ]
 
 
-            # Send command ONLY when
-            # light/fan state changes
+        # =================================
+        # LIGHT STATE CHANGE
+        # =================================
 
-            if data["state_changed"]:
+        if data["light_changed"]:
+
+            new_light_state = data["light"]
+
+
+            # LIGHT TURNED ON
+            if new_light_state:
+
+                appliance_start_time[
+                    zone_name
+                ]["light"] = current_time
+
+
+            # LIGHT TURNED OFF
+            else:
+
+                start_time = (
+                    appliance_start_time[
+                        zone_name
+                    ]["light"]
+                )
+
+
+                if start_time is not None:
+
+                    duration_seconds = (
+                        current_time
+                        - start_time
+                    )
+
+
+                    energy_wh = (
+                        LIGHT_POWER_WATTS
+                        * duration_seconds
+                        / 3600
+                    )
+
+
+                    database.log_energy(
+
+                        zone_name=zone_name,
+
+                        people_count=data["people"],
+
+                        light_status=True,
+
+                        fan_status=data["fan"],
+
+                        duration_seconds=duration_seconds,
+
+                        energy_wh=energy_wh
+                    )
+
+
+                    print(
+                        f"ENERGY: "
+                        f"{zone_name} Light | "
+                        f"{duration_seconds:.2f}s | "
+                        f"{energy_wh:.4f} Wh"
+                    )
+
+
+                    appliance_start_time[
+                        zone_name
+                    ]["light"] = None
+
+
+            # DATABASE EVENT
+
+            database.log_appliance_event(
+
+                zone_name=zone_name,
+
+                appliance="light",
+
+                previous_state=not new_light_state,
+
+                current_state=new_light_state
+            )
+
+
+            print(
+                f"DB: {zone_name} "
+                f"Light -> "
+                f"{'ON' if new_light_state else 'OFF'}"
+            )
+
+
+        # =================================
+        # FAN STATE CHANGE
+        # =================================
+
+        if data["fan_changed"]:
+
+            new_fan_state = data["fan"]
+
+
+            # FAN ON
+            if new_fan_state:
+
+                appliance_start_time[
+                    zone_name
+                ]["fan"] = current_time
+
+
+            # FAN OFF
+            else:
+
+                start_time = (
+                    appliance_start_time[
+                        zone_name
+                    ]["fan"]
+                )
+
+
+                if start_time is not None:
+
+                    duration_seconds = (
+                        current_time
+                        - start_time
+                    )
+
+
+                    energy_wh = (
+                        FAN_POWER_WATTS
+                        * duration_seconds
+                        / 3600
+                    )
+
+
+                    database.log_energy(
+
+                        zone_name=zone_name,
+
+                        people_count=data["people"],
+
+                        light_status=data["light"],
+
+                        fan_status=True,
+
+                        duration_seconds=duration_seconds,
+
+                        energy_wh=energy_wh
+                    )
+
+
+                    print(
+                        f"ENERGY: "
+                        f"{zone_name} Fan | "
+                        f"{duration_seconds:.2f}s | "
+                        f"{energy_wh:.4f} Wh"
+                    )
+
+
+                    appliance_start_time[
+                        zone_name
+                    ]["fan"] = None
+
+
+            # DATABASE EVENT
+
+            database.log_appliance_event(
+
+                zone_name=zone_name,
+
+                appliance="fan",
+
+                previous_state=not new_fan_state,
+
+                current_state=new_fan_state
+            )
+
+
+            print(
+                f"DB: {zone_name} "
+                f"Fan -> "
+                f"{'ON' if new_fan_state else 'OFF'}"
+            )
+
+
+        # =================================
+        # ARDUINO
+        # =================================
+
+        if data["state_changed"]:
+
+            if arduino_connected:
 
                 arduino.send_zone_command(
 
@@ -345,7 +610,7 @@ while True:
 
 
     # =================================
-    # DISPLAY AUTOMATION STATUS
+    # DISPLAY
     # =================================
 
     y_position = 30
@@ -412,7 +677,7 @@ while True:
 
 
     # =================================
-    # OUTSIDE COUNT
+    # OUTSIDE
     # =================================
 
     cv2.putText(
@@ -469,7 +734,7 @@ while True:
     # ARDUINO STATUS
     # =================================
 
-    hardware_status = (
+    status = (
 
         "Arduino: CONNECTED"
 
@@ -483,7 +748,7 @@ while True:
 
         frame,
 
-        hardware_status,
+        status,
 
         (15, y_position),
 
