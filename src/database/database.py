@@ -1,6 +1,5 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
 
 
 class ClassroomDatabase:
@@ -21,6 +20,9 @@ class ClassroomDatabase:
 
         self.create_tables()
 
+    # ============================================
+    # DATABASE CONNECTION
+    # ============================================
 
     def connect(self):
 
@@ -28,349 +30,363 @@ class ClassroomDatabase:
             self.database_path
         )
 
+    # ============================================
+    # CREATE TABLE
+    # ============================================
 
     def create_tables(self):
 
         connection = self.connect()
-
         cursor = connection.cursor()
-
-
-        # ----------------------------------------
-        # ZONE OCCUPANCY TABLE
-        # ----------------------------------------
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS zone_occupancy (
-
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-                timestamp TEXT NOT NULL,
-
-                zone_name TEXT NOT NULL,
-
-                people_count INTEGER NOT NULL,
-
-                occupancy_status INTEGER NOT NULL
-
-            )
-        """)
-
-
-        # ----------------------------------------
-        # APPLIANCE EVENTS TABLE
-        # ----------------------------------------
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS appliance_events (
-
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-                timestamp TEXT NOT NULL,
-
-                zone_name TEXT NOT NULL,
-
-                appliance TEXT NOT NULL,
-
-                previous_state INTEGER NOT NULL,
-
-                current_state INTEGER NOT NULL
-
-            )
-        """)
-
-
-        # ----------------------------------------
-        # ENERGY SESSION TABLE
-        # ----------------------------------------
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS energy_logs (
-
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-                timestamp TEXT NOT NULL,
-
-                zone_name TEXT NOT NULL,
-
-                appliance TEXT NOT NULL,
-
-                people_count INTEGER NOT NULL,
-
-                duration_seconds REAL NOT NULL,
-
-                power_watts REAL NOT NULL,
-
-                energy_wh REAL NOT NULL
-
-            )
-        """)
-
-
-        connection.commit()
-        connection.close()
-
-
-    # ============================================
-    # OCCUPANCY
-    # ============================================
-
-    def log_occupancy(
-        self,
-        zone_name,
-        people_count
-    ):
-
-        connection = self.connect()
-
-        cursor = connection.cursor()
-
-        timestamp = datetime.now().isoformat()
-
-        occupancy_status = (
-            1
-            if people_count > 0
-            else 0
-        )
 
         cursor.execute(
             """
-            INSERT INTO zone_occupancy
-            (
-                timestamp,
-                zone_name,
-                people_count,
-                occupancy_status
+            CREATE TABLE IF NOT EXISTS daily_features (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                date TEXT NOT NULL UNIQUE,
+
+                day_type TEXT NOT NULL,
+
+                max_zone1_people INTEGER NOT NULL DEFAULT 0,
+
+                max_zone2_people INTEGER NOT NULL DEFAULT 0,
+
+                max_total_people_count INTEGER NOT NULL DEFAULT 0,
+
+                zone1_occupancy_status INTEGER NOT NULL DEFAULT 0,
+
+                zone2_occupancy_status INTEGER NOT NULL DEFAULT 0,
+
+                zone1_occupancy_duration REAL NOT NULL DEFAULT 0,
+
+                zone2_occupancy_duration REAL NOT NULL DEFAULT 0,
+
+                zone1_light_hours REAL NOT NULL DEFAULT 0,
+
+                zone1_fan_hours REAL NOT NULL DEFAULT 0,
+
+                zone2_light_hours REAL NOT NULL DEFAULT 0,
+
+                zone2_fan_hours REAL NOT NULL DEFAULT 0,
+
+                zone1_energy_kwh REAL NOT NULL DEFAULT 0,
+
+                zone2_energy_kwh REAL NOT NULL DEFAULT 0,
+
+                daily_energy_kwh REAL NOT NULL DEFAULT 0,
+
+                working_day INTEGER NOT NULL DEFAULT 0,
+
+                holiday INTEGER NOT NULL DEFAULT 0,
+
+                exam_day INTEGER NOT NULL DEFAULT 0,
+
+                special_class INTEGER NOT NULL DEFAULT 0,
+
+                event_day INTEGER NOT NULL DEFAULT 0,
+
+                vacation_day INTEGER NOT NULL DEFAULT 0,
+
+                temperature REAL NOT NULL DEFAULT 0,
+
+                humidity REAL NOT NULL DEFAULT 0,
+
+                average_class_duration REAL NOT NULL DEFAULT 0
+
             )
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                timestamp,
-                zone_name,
-                people_count,
-                occupancy_status
-            )
+            """
         )
 
         connection.commit()
         connection.close()
 
-
     # ============================================
-    # APPLIANCE EVENTS
+    # SAVE DAILY FEATURES
     # ============================================
 
-    def log_appliance_event(
+    def save_daily_features(
         self,
-        zone_name,
-        appliance,
-        previous_state,
-        current_state
+        date,
+        day_type,
+        max_zone1_people,
+        max_zone2_people,
+        max_total_people_count,
+        zone1_occupancy_status,
+        zone2_occupancy_status,
+        zone1_occupancy_duration,
+        zone2_occupancy_duration,
+        zone1_light_hours,
+        zone1_fan_hours,
+        zone2_light_hours,
+        zone2_fan_hours,
+        zone1_energy_kwh,
+        zone2_energy_kwh,
+        daily_energy_kwh,
+        working_day,
+        holiday,
+        exam_day,
+        special_class,
+        event_day,
+        vacation_day,
+        temperature,
+        humidity,
+        average_class_duration
     ):
 
         connection = self.connect()
-
         cursor = connection.cursor()
-
-        timestamp = datetime.now().isoformat()
 
         cursor.execute(
             """
-            INSERT INTO appliance_events
+            INSERT INTO daily_features
             (
-                timestamp,
-                zone_name,
-                appliance,
-                previous_state,
-                current_state
+                date,
+                day_type,
+
+                max_zone1_people,
+                max_zone2_people,
+                max_total_people_count,
+
+                zone1_occupancy_status,
+                zone2_occupancy_status,
+
+                zone1_occupancy_duration,
+                zone2_occupancy_duration,
+
+                zone1_light_hours,
+                zone1_fan_hours,
+
+                zone2_light_hours,
+                zone2_fan_hours,
+
+                zone1_energy_kwh,
+                zone2_energy_kwh,
+                daily_energy_kwh,
+
+                working_day,
+                holiday,
+                exam_day,
+                special_class,
+                event_day,
+                vacation_day,
+
+                temperature,
+                humidity,
+
+                average_class_duration
             )
-            VALUES (?, ?, ?, ?, ?)
+
+            VALUES
+            (
+                ?,
+                ?,
+
+                ?,
+                ?,
+                ?,
+
+                ?,
+                ?,
+
+                ?,
+                ?,
+
+                ?,
+                ?,
+
+                ?,
+                ?,
+
+                ?,
+                ?,
+                ?,
+
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+
+                ?,
+                ?,
+
+                ?
+            )
+
+            ON CONFLICT(date)
+            DO UPDATE SET
+
+                day_type =
+                    excluded.day_type,
+
+                max_zone1_people =
+                    excluded.max_zone1_people,
+
+                max_zone2_people =
+                    excluded.max_zone2_people,
+
+                max_total_people_count =
+                    excluded.max_total_people_count,
+
+                zone1_occupancy_status =
+                    excluded.zone1_occupancy_status,
+
+                zone2_occupancy_status =
+                    excluded.zone2_occupancy_status,
+
+                zone1_occupancy_duration =
+                    excluded.zone1_occupancy_duration,
+
+                zone2_occupancy_duration =
+                    excluded.zone2_occupancy_duration,
+
+                zone1_light_hours =
+                    excluded.zone1_light_hours,
+
+                zone1_fan_hours =
+                    excluded.zone1_fan_hours,
+
+                zone2_light_hours =
+                    excluded.zone2_light_hours,
+
+                zone2_fan_hours =
+                    excluded.zone2_fan_hours,
+
+                zone1_energy_kwh =
+                    excluded.zone1_energy_kwh,
+
+                zone2_energy_kwh =
+                    excluded.zone2_energy_kwh,
+
+                daily_energy_kwh =
+                    excluded.daily_energy_kwh,
+
+                working_day =
+                    excluded.working_day,
+
+                holiday =
+                    excluded.holiday,
+
+                exam_day =
+                    excluded.exam_day,
+
+                special_class =
+                    excluded.special_class,
+
+                event_day =
+                    excluded.event_day,
+
+                vacation_day =
+                    excluded.vacation_day,
+
+                temperature =
+                    excluded.temperature,
+
+                humidity =
+                    excluded.humidity,
+
+                average_class_duration =
+                    excluded.average_class_duration
             """,
             (
-                timestamp,
-                zone_name,
-                appliance,
-                int(previous_state),
-                int(current_state)
+                date,
+                day_type,
+
+                int(max_zone1_people),
+                int(max_zone2_people),
+                int(max_total_people_count),
+
+                int(zone1_occupancy_status),
+                int(zone2_occupancy_status),
+
+                float(zone1_occupancy_duration),
+                float(zone2_occupancy_duration),
+
+                float(zone1_light_hours),
+                float(zone1_fan_hours),
+
+                float(zone2_light_hours),
+                float(zone2_fan_hours),
+
+                float(zone1_energy_kwh),
+                float(zone2_energy_kwh),
+                float(daily_energy_kwh),
+
+                int(working_day),
+                int(holiday),
+                int(exam_day),
+                int(special_class),
+                int(event_day),
+                int(vacation_day),
+
+                float(temperature),
+                float(humidity),
+
+                float(average_class_duration)
             )
         )
 
         connection.commit()
         connection.close()
 
-
     # ============================================
-    # ENERGY SESSION
+    # GET DAILY FEATURES
     # ============================================
 
-    def log_energy(
+    def get_daily_features(
         self,
-        zone_name,
-        appliance,
-        people_count,
-        duration_seconds,
-        power_watts
+        limit=100
     ):
 
         connection = self.connect()
-
-        cursor = connection.cursor()
-
-        timestamp = datetime.now().isoformat()
-
-        duration_seconds = float(
-            duration_seconds
-        )
-
-        power_watts = float(
-            power_watts
-        )
-
-        # Energy calculation:
-        #
-        # Energy (Wh)
-        # = Power (W) × Time (seconds) / 3600
-
-        energy_wh = (
-            power_watts
-            * duration_seconds
-            / 3600
-        )
-
-        cursor.execute(
-            """
-            INSERT INTO energy_logs
-            (
-                timestamp,
-                zone_name,
-                appliance,
-                people_count,
-                duration_seconds,
-                power_watts,
-                energy_wh
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                timestamp,
-                zone_name,
-                appliance,
-                int(people_count),
-                duration_seconds,
-                power_watts,
-                energy_wh
-            )
-        )
-
-        connection.commit()
-        connection.close()
-
-
-    # ============================================
-    # READ OCCUPANCY
-    # ============================================
-
-    def get_recent_occupancy(
-        self,
-        limit=20
-    ):
-
-        connection = self.connect()
-
         cursor = connection.cursor()
 
         cursor.execute(
             """
             SELECT
+
                 id,
-                timestamp,
-                zone_name,
-                people_count,
-                occupancy_status
+                date,
+                day_type,
 
-            FROM zone_occupancy
+                max_zone1_people,
+                max_zone2_people,
+                max_total_people_count,
 
-            ORDER BY id DESC
+                zone1_occupancy_status,
+                zone2_occupancy_status,
 
-            LIMIT ?
-            """,
-            (limit,)
-        )
+                zone1_occupancy_duration,
+                zone2_occupancy_duration,
 
-        rows = cursor.fetchall()
+                zone1_light_hours,
+                zone1_fan_hours,
 
-        connection.close()
+                zone2_light_hours,
+                zone2_fan_hours,
 
-        return rows
+                zone1_energy_kwh,
+                zone2_energy_kwh,
+                daily_energy_kwh,
 
+                working_day,
+                holiday,
+                exam_day,
+                special_class,
+                event_day,
+                vacation_day,
 
-    # ============================================
-    # READ APPLIANCE EVENTS
-    # ============================================
+                temperature,
+                humidity,
 
-    def get_appliance_events(
-        self,
-        limit=20
-    ):
+                average_class_duration
 
-        connection = self.connect()
+            FROM daily_features
 
-        cursor = connection.cursor()
-
-        cursor.execute(
-            """
-            SELECT
-                id,
-                timestamp,
-                zone_name,
-                appliance,
-                previous_state,
-                current_state
-
-            FROM appliance_events
-
-            ORDER BY id DESC
-
-            LIMIT ?
-            """,
-            (limit,)
-        )
-
-        rows = cursor.fetchall()
-
-        connection.close()
-
-        return rows
-
-
-    # ============================================
-    # READ ENERGY LOGS
-    # ============================================
-
-    def get_energy_logs(
-        self,
-        limit=20
-    ):
-
-        connection = self.connect()
-
-        cursor = connection.cursor()
-
-        cursor.execute(
-            """
-            SELECT
-                id,
-                timestamp,
-                zone_name,
-                appliance,
-                people_count,
-                duration_seconds,
-                power_watts,
-                energy_wh
-
-            FROM energy_logs
-
-            ORDER BY id DESC
+            ORDER BY date DESC
 
             LIMIT ?
             """,
