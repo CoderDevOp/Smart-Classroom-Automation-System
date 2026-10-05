@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+    Smart Classroom Automation
+</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+}
+
+.container {
+    width: 92%;
+    max-width: 1200px;
+    margin: auto;
+    padding: 30px 0;
+}
+
+.header {
+    margin-bottom: 30px;
+}
+
+.header h1 {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.header p {
+    color: #94a3b8;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(300px, 1fr)
+        );
+
+    gap: 20px;
+}
+
+.card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 22px;
+}
+
+.card h2 {
+    font-size: 20px;
+    margin-bottom: 18px;
+}
+
+.camera-card {
+    grid-column: 1 / -1;
+}
+
+.camera-box {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #020617;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.camera-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.camera-placeholder {
+    color: #64748b;
+    text-align: center;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #334155;
+}
+
+.status-row:last-child {
+    border-bottom: none;
+}
+
+.status {
+    font-weight: bold;
+}
+
+.ready {
+    color: #22c55e;
+}
+
+.warning {
+    color: #f59e0b;
+}
+
+.danger {
+    color: #ef4444;
+}
+
+.button-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.primary {
+    background: #2563eb;
+    color: white;
+}
+
+.success {
+    background: #16a34a;
+    color: white;
+}
+
+.danger-button {
+    background: #dc2626;
+    color: white;
+}
+
+.secondary {
+    background: #475569;
+    color: white;
+}
+
+.zone-list {
+    margin-top: 15px;
+}
+
+.zone-item {
+    background: #0f172a;
+    border: 1px solid #334155;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.message {
+    margin-top: 15px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #0f172a;
+    color: #cbd5e1;
+    min-height: 20px;
+}
+
+.workflow {
+    line-height: 1.8;
+    color: #cbd5e1;
+}
+
+.automation-status {
+    margin-top: 18px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+@media (max-width: 600px) {
+
+    .container {
+        width: 94%;
+        padding: 20px 0;
+    }
+
+    .header h1 {
+        font-size: 25px;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+
+    button {
+        width: 100%;
+    }
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+<div class="header">
+
+<h1>
+Smart Classroom Automation System
+</h1>
+
+<p>
+YOLO + Zone Detection + Arduino + SQL + AI/ML
+</p>
+
+</div>
+
+
+<div class="grid">
+
+
+<div class="card camera-card">
+
+<h2>
+Live Camera
+</h2>
+
+<div class="camera-box">
+
+<img
+    id="cameraFeed"
+    src="/video_feed"
+    alt="Live classroom camera"
+>
+
+<div
+    id="cameraPlaceholder"
+    class="camera-placeholder"
+>
+Camera is stopped. Start Automation to view the live camera.
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+Zone Configuration
+</h2>
+
+<div class="button-group">
+
+<button
+    class="primary"
+    onclick="openZoneConfigurator()"
+>
+Open Zone Configurator
+</button>
+
+<button
+    class="secondary"
+    onclick="refreshZoneStatus()"
+>
+Refresh Zones
+</button>
+
+</div>
+
+<div
+    id="zoneMessage"
+    class="message"
+>
+Checking zones...
+</div>
+
+<div
+    id="zoneList"
+    class="zone-list"
+>
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+Automation Control
+</h2>
+
+<div class="button-group">
+
+<button
+    id="startButton"
+    class="success"
+    onclick="startAutomation()"
+    disabled
+>
+Start Automation
+</button>
+
+<button
+    id="stopButton"
+    class="danger-button"
+    onclick="stopAutomation()"
+    disabled
+>
+Stop Automation
+</button>
+
+</div>
+
+<div
+    id="automationStatus"
+    class="automation-status warning"
+>
+Automation: Stopped
+</div>
+
+<div
+    id="automationMessage"
+    class="message"
+>
+Configure at least 2 zones first.
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+System Status
+</h2>
+
+<div class="status-row">
+<span>Camera</span>
+<span id="cameraStatus" class="status">
+Checking...
+</span>
+</div>
+
+<div class="status-row">
+<span>YOLO</span>
+<span id="yoloStatus" class="status">
+Checking...
+</span>
+</div>
+
+<div class="status-row">
+<span>Arduino</span>
+<span id="arduinoStatus" class="status">
+Checking...
+</span>
+</div>
+
+<div class="status-row">
+<span>Database</span>
+<span id="databaseStatus" class="status">
+Checking...
+</span>
+</div>
+
+<div class="status-row">
+<span>Zones</span>
+<span id="zonesStatus" class="status">
+Checking...
+</span>
+</div>
+
+<div class="status-row">
+<span>Automation</span>
+<span id="systemAutomationStatus" class="status">
+Checking...
+</span>
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+System Workflow
+</h2>
+
+<div class="workflow">
+
+Camera
+→
+YOLO Person Detection
+→
+Zone Mapping
+→
+Occupancy
+→
+Smart Control
+→
+Arduino
+→
+Lights + Fans
+→
+SQL Database
+→
+AI/ML Energy Prediction
+
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+<script>
+
+function setStatus(
+    elementId,
+    value
+) {
+
+    const element =
+        document.getElementById(
+            elementId
+        );
+
+    element.textContent = value;
+
+    element.className = "status";
+
+    if (
+        value === "Ready" ||
+        value === "Running"
+    ) {
+
+        element.classList.add(
+            "ready"
+        );
+
+    }
+
+    else if (
+        value === "Stopped" ||
+        value === "Not Configured"
+    ) {
+
+        element.classList.add(
+            "warning"
+        );
+
+    }
+
+    else {
+
+        element.classList.add(
+            "danger"
+        );
+
+    }
+
+}
+
+
+async function refreshZoneStatus() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/zone_status"
+            );
+
+        const data =
+            await response.json();
+
+        const message =
+            document.getElementById(
+                "zoneMessage"
+            );
+
+        const zoneList =
+            document.getElementById(
+                "zoneList"
+            );
+
+        const startButton =
+            document.getElementById(
+                "startButton"
+            );
+
+        zoneList.innerHTML = "";
+
+
+        if (data.saved) {
+
+            message.textContent =
+                `${data.count} zones configured successfully.`;
+
+            message.style.color =
+                "#22c55e";
+
+
+            data.zones.forEach(
+                function(zone) {
+
+                    const item =
+                        document.createElement(
+                            "div"
+                        );
+
+                    item.className =
+                        "zone-item";
+
+                    item.textContent =
+                        zone;
+
+                    zoneList.appendChild(
+                        item
+                    );
+
+                }
+            );
+
+            startButton.disabled = false;
+
+        }
+
+        else {
+
+            message.textContent =
+                "At least 2 zones are required.";
+
+            message.style.color =
+                "#f59e0b";
+
+            startButton.disabled = true;
+
+        }
+
+    }
+
+    catch (error) {
+
+        document.getElementById(
+            "zoneMessage"
+        ).textContent =
+            "Could not read zone status.";
+
+    }
+
+}
+
+
+async function openZoneConfigurator() {
+
+    const message =
+        document.getElementById(
+            "zoneMessage"
+        );
+
+    try {
+
+        const response =
+            await fetch(
+                "/configure_zones",
+                {
+                    method: "POST"
+                }
+            );
+
+        const data =
+            await response.json();
+
+        message.textContent =
+            data.message;
+
+        message.style.color =
+            data.success
+                ? "#22c55e"
+                : "#ef4444";
+
+    }
+
+    catch (error) {
+
+        message.textContent =
+            "Could not open zone configurator.";
+
+        message.style.color =
+            "#ef4444";
+
+    }
+
+}
+
+
+async function startAutomation() {
+
+    const message =
+        document.getElementById(
+            "automationMessage"
+        );
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
+
+    const stopButton =
+        document.getElementById(
+            "stopButton"
+        );
+
+    startButton.disabled = true;
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/start_automation",
+                {
+                    method: "POST"
+                }
+            );
+
+        const data =
+            await response.json();
+
+        message.textContent =
+            data.message;
+
+        message.style.color =
+            data.success
+                ? "#22c55e"
+                : "#ef4444";
+
+
+        if (data.success) {
+
+            stopButton.disabled = false;
+
+            setTimeout(
+                function() {
+
+                    refreshCamera();
+
+                },
+                1000
+            );
+
+        }
+
+        else {
+
+            startButton.disabled = false;
+
+        }
+
+        updateAutomationStatus();
+        updateSystemStatus();
+
+    }
+
+    catch (error) {
+
+        message.textContent =
+            "Could not start automation.";
+
+        message.style.color =
+            "#ef4444";
+
+        startButton.disabled = false;
+
+    }
+
+}
+
+
+async function stopAutomation() {
+
+    const message =
+        document.getElementById(
+            "automationMessage"
+        );
+
+    const startButton =
+        document.getElementById(
+            "startButton"
+        );
+
+    const stopButton =
+        document.getElementById(
+            "stopButton"
+        );
+
+    stopButton.disabled = true;
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/stop_automation",
+                {
+                    method: "POST"
+                }
+            );
+
+        const data =
+            await response.json();
+
+        message.textContent =
+            data.message;
+
+        message.style.color =
+            data.success
+                ? "#22c55e"
+                : "#ef4444";
+
+        updateAutomationStatus();
+        updateSystemStatus();
+
+    }
+
+    catch (error) {
+
+        message.textContent =
+            "Could not stop automation.";
+
+        message.style.color =
+            "#ef4444";
+
+        stopButton.disabled = false;
+
+    }
+
+}
+
+
+async function updateAutomationStatus() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/automation_status"
+            );
+
+        const data =
+            await response.json();
+
+        const status =
+            document.getElementById(
+                "automationStatus"
+            );
+
+        const startButton =
+            document.getElementById(
+                "startButton"
+            );
+
+        const stopButton =
+            document.getElementById(
+                "stopButton"
+            );
+
+        const camera =
+            document.getElementById(
+                "cameraFeed"
+            );
+
+        const placeholder =
+            document.getElementById(
+                "cameraPlaceholder"
+            );
+
+
+        if (data.running) {
+
+            status.textContent =
+                "Automation: Running";
+
+            status.className =
+                "automation-status ready";
+
+            startButton.disabled = true;
+
+            stopButton.disabled = false;
+
+            camera.style.display =
+                "block";
+
+            placeholder.style.display =
+                "none";
+
+        }
+
+        else {
+
+            status.textContent =
+                "Automation: Stopped";
+
+            status.className =
+                "automation-status warning";
+
+            stopButton.disabled = true;
+
+            camera.style.display =
+                "none";
+
+            placeholder.style.display =
+                "block";
+
+            refreshZoneStatus();
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.log(
+            "Automation status error:",
+            error
+        );
+
+    }
+
+}
+
+
+async function updateSystemStatus() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/system_status"
+            );
+
+        const data =
+            await response.json();
+
+        setStatus(
+            "cameraStatus",
+            data.camera
+        );
+
+        setStatus(
+            "yoloStatus",
+            data.yolo
+        );
+
+        setStatus(
+            "arduinoStatus",
+            data.arduino
+        );
+
+        setStatus(
+            "databaseStatus",
+            data.database
+        );
+
+        setStatus(
+            "zonesStatus",
+            data.zones
+        );
+
+        setStatus(
+            "systemAutomationStatus",
+            data.automation
+        );
+
+    }
+
+    catch (error) {
+
+        console.log(
+            "System status error:",
+            error
+        );
+
+    }
+
+}
+
+
+function refreshCamera() {
+
+    const camera =
+        document.getElementById(
+            "cameraFeed"
+        );
+
+    camera.src =
+        "/video_feed?time=" +
+        Date.now();
+
+}
+
+
+refreshZoneStatus();
+
+updateAutomationStatus();
+
+updateSystemStatus();
+
+
+setInterval(
+    updateAutomationStatus,
+    3000
+);
+
+setInterval(
+    updateSystemStatus,
+    3000
+);
+
+</script>
+
+</body>
+
+</html>
